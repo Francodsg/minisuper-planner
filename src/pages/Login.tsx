@@ -3,6 +3,9 @@ import { ShoppingCart } from 'lucide-react';
 import { supabase, friendlyError, isConfigured } from '@/data/supabase';
 import { Button, Field, cx } from '@/components/ui';
 
+/** URL pública de la app (incluye la subcarpeta de GitHub Pages). */
+const appUrl = window.location.origin + import.meta.env.BASE_URL;
+
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
@@ -21,11 +24,11 @@ export default function Login() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Correo o contraseña incorrectos.' : error.message);
       } else if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: appUrl } });
         if (error) throw error;
         if (!data.session) setMsg({ ok: true, text: 'Cuenta creada. Revisa tu correo para confirmarla y después inicia sesión.' });
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: appUrl });
         if (error) throw error;
         setMsg({ ok: true, text: 'Te enviamos un correo para restablecer tu contraseña.' });
       }

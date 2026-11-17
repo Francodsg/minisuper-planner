@@ -26,6 +26,20 @@ Aplicación web para planificar y controlar el **surtido inicial de un minisúpe
 
 Al registrarse, cada usuario recibe automáticamente: su configuración, una lista “Surtido inicial” y los 9 departamentos comunes. **No se precargan categorías ni productos.**
 
+## Publicar en GitHub Pages
+
+El flujo `.github/workflows/deploy.yml` compila y publica la app en cada *push* a `main`, en `https://<usuario>.github.io/<repo>/`.
+
+1. Sube el proyecto a un repositorio de GitHub (rama `main`).
+2. En el repositorio: *Settings → Secrets and variables → Actions → New repository secret*, crea:
+   - `VITE_SUPABASE_URL` → la URL de tu proyecto Supabase
+   - `VITE_SUPABASE_ANON_KEY` → la clave pública (*anon*). Es pública por diseño; la seguridad la dan las políticas RLS.
+3. *Settings → Pages → Build and deployment → Source:* **GitHub Actions**.
+4. En Supabase, *Authentication → URL Configuration*: pon `https://<usuario>.github.io/<repo>/` como *Site URL* y agrégala en *Redirect URLs*.
+5. Haz un *push* (o ejecuta el flujo manualmente desde *Actions*). La base de datos sigue en Supabase; GitHub Pages solo sirve la interfaz.
+
+Para compilar localmente con la subcarpeta: `BASE_PATH=/<repo>/ npm run build`.
+
 ## Arquitectura
 
 ```
