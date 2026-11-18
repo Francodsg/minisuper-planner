@@ -27,13 +27,18 @@ jobs:
       - run: npm test
       - name: Revisar configuración de Supabase
         run: |
-          [ -n "$VITE_SUPABASE_URL" ] && echo "VITE_SUPABASE_URL: encontrado" || echo "::warning::Falta VITE_SUPABASE_URL (Settings → Secrets and variables → Actions)"
-          [ -n "$VITE_SUPABASE_ANON_KEY" ] && echo "VITE_SUPABASE_ANON_KEY: encontrado" || echo "::warning::Falta VITE_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions)"
+          # Los secretos/variables del repositorio tienen prioridad; si no existen se usa .env.production
+          [ -n "$VITE_SUPABASE_URL" ] && echo "VITE_SUPABASE_URL: secreto del repositorio" || echo "VITE_SUPABASE_URL: se usa .env.production"
+          [ -n "$VITE_SUPABASE_ANON_KEY" ] && echo "VITE_SUPABASE_ANON_KEY: secreto del repositorio" || echo "VITE_SUPABASE_ANON_KEY: se usa .env.production"
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
       - name: Compilar
-        run: npm run build
+        # una variable vacía anularía .env.production, por eso se elimina si no tiene valor
+        run: |
+          [ -z "$VITE_SUPABASE_URL" ] && unset VITE_SUPABASE_URL
+          [ -z "$VITE_SUPABASE_ANON_KEY" ] && unset VITE_SUPABASE_ANON_KEY
+          npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
