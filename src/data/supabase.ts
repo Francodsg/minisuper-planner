@@ -1,11 +1,36 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+/**
+ * Normaliza la URL del proyecto: quita espacios, agrega https:// si falta y descarta
+ * rutas como /rest/v1. Devuelve null si no es una URL válida.
+ */
+export function normalizeSupabaseUrl(raw: string | undefined): string | null {
+  const v = (raw ?? '').trim().replace(/^["']|["']$/g, '');
+  if (!v) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.') && u.hostname !== 'localhost') return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const url = normalizeSupabaseUrl(rawUrl);
+const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim().replace(/^["']|["']$/g, '');
 
 export const isConfigured = Boolean(url && key);
+/** Explica qué falta, para mostrarlo en pantalla en lugar de una página en blanco. */
+export const configProblem: string | null = !rawUrl?.trim()
+  ? 'Falta VITE_SUPABASE_URL.'
+  : !url
+    ? `VITE_SUPABASE_URL no es una URL válida (debe verse como https://xxxx.supabase.co).`
+    : !key
+      ? 'Falta VITE_SUPABASE_ANON_KEY.'
+      : null;
 
-export const supabase = createClient(url ?? 'http://localhost:54321', key ?? 'missing-key', {
+export const supabase = createClient(url ?? 'http://localhost:54321', key || 'missing-key', {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 10 } },
 });

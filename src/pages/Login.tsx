@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
-import { supabase, friendlyError, isConfigured } from '@/data/supabase';
+import { supabase, friendlyError, isConfigured, configProblem } from '@/data/supabase';
 import { Button, Field, cx } from '@/components/ui';
 
 /** URL pública de la app (incluye la subcarpeta de GitHub Pages). */
@@ -46,7 +46,7 @@ export default function Login() {
         </div>
         {!isConfigured && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Falta configurar Supabase. Copia <code>.env.example</code> a <code>.env.local</code> con la URL y la clave pública de tu proyecto.
+            Falta configurar Supabase: {configProblem} En GitHub revisa los secretos del repositorio (Settings → Secrets and variables → Actions) y vuelve a publicar; en local, usa <code>.env.local</code>.
           </div>
         )}
         <form onSubmit={submit} className="card space-y-4 p-6" noValidate>
