@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { CostConfig, Department, Category, ListItem, Priority, Product, Purchase, UserSettings, ShoppingList } from '@/lib/types';
-import { dedupeKey } from '@/lib/search';
+import { dedupeKey, normalize } from '@/lib/search';
+import type { ImportPlan, ImportRow } from '@/lib/importer';
 
 /**
  * Capa de acceso a datos. Todas las operaciones pasan por PostgreSQL (fuente de verdad).
@@ -145,4 +146,67 @@ export async function unvoidPurchase(id: string) {
 // ---------- Respaldos ----------
 export async function restoreBackup(data: unknown) {
   check(await supabase.rpc('restore_backup', { p_data: data }));
+}
+
+// ---------- Importación masiva ----------
+
+const CHUNK = 200;
+async function inChunks<T, R>(items: T[], fn: (chunk: T[]) => Promise<R[]>, onProgress?: (done: number) => void): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += CHUNK) {
+    out.push(...(await fn(items.slice(i, i + CHUNK))));
+    onProgress?.(Math.min(i + CHUNK, items.length));
+  }
+  return out;
+}
+
+/**
+ * Ejecuta un plan de importación. Es repetible: si se interrumpe, volver a importar el
+ * mismo archivo reutiliza lo ya creado y solo agrega lo que falta.
+ */
+export async function runImport(plan: ImportPlan, listId: string, onProgress?: (msg: string) => void): Promise<{ products: number; items: number }> {
+  const snap = await loadAll();
+  // 1. Departamentos
+  let order = snap.departments.reduce((m, d) => Math.max(m, d.sort_order), 0);
+  if (plan.newDepartments.length) {
+    onProgress?.('Creando departamentos…');
+    check(await supabase.from('departments').insert(plan.newDepartments.map((name) => ({ name: name.trim(), sort_order: ++order }))));
+  }
+  const deps = check(await supabase.from('departments').select('*')) as Department[];
+  const depId = new Map(deps.map((d) => [normalize(d.name), d.id]));
+  // 2. Categorías
+  if (plan.newCategories.length) {
+    onProgress?.('Creando categorías…');
+    await inChunks(plan.newCategories, async (chunk) => {
+      check(await supabase.from('categories').insert(chunk.map((c, i) => ({ department_id: depId.get(normalize(c.department)), name: c.name.trim(), sort_order: i + 1 }))));
+      return [];
+    });
+  }
+  const cats = check(await supabase.from('categories').select('*')) as Category[];
+  const catId = new Map(cats.map((c) => [`${c.department_id}|${normalize(c.name)}`, c.id]));
+  const classify = (r: ImportRow) => {
+    const d = r.department ? depId.get(normalize(r.department)) ?? null : null;
+    const c = d && r.category ? catId.get(`${d}|${normalize(r.category)}`) ?? null : null;
+    return { department_id: d, category_id: c };
+  };
+  const cost = (r: ImportRow) => ({ unit_cost: r.cost, price_mode: 'con_impuestos' as const, iva_kind: 'tasa' as const, iva_rate: 16, ieps_kind: 'no_aplica' as const, ieps_value: 0 });
+  // 3. Productos nuevos del catálogo
+  const created = await inChunks(plan.newProducts, async (chunk) => check(await supabase.from('products').insert(chunk.map((r) => ({
+    name: r.name.trim(), brand: r.brand || null, presentation: r.presentation || null, supplier: r.supplier || null,
+    notes: null, dedupe_key: dedupeKey(r.name, r.brand, r.presentation), ...classify(r), ...cost(r),
+  }))).select('id, dedupe_key')) as Array<{ id: string; dedupe_key: string }>,
+  (n) => onProgress?.(`Creando productos… ${n} de ${plan.newProducts.length}`));
+  const idByKey = new Map(created.map((p) => [p.dedupe_key, p.id]));
+  // 4. Artículos de la lista
+  const toList = [
+    ...plan.newProducts.map((r) => ({ r, pid: idByKey.get(dedupeKey(r.name, r.brand, r.presentation))! })),
+    ...plan.reuseProducts.map(({ row, product }) => ({ r: row, pid: product.id })),
+  ];
+  await inChunks(toList, async (chunk) => {
+    check(await supabase.from('list_items').insert(chunk.map(({ r, pid }) => ({
+      list_id: listId, product_id: pid, planned_qty: r.qty, priority: r.priority, notes: r.notes || null, ...cost(r),
+    }))));
+    return [];
+  }, (n) => onProgress?.(`Agregando a la lista… ${n} de ${toList.length}`));
+  return { products: created.length, items: toList.length };
 }

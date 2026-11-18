@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Archive, ArrowDownUp, Columns3, FolderInput, History, LayoutGrid, ListChecks, Pencil, Plus, Search, ShoppingBag,
@@ -21,6 +21,7 @@ import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/Confirm';
 import { Menu } from '@/components/Menu';
 import { MultiSelect } from '@/components/MultiSelect';
+import { ImportDialog } from '@/components/ImportDialog';
 import { Button, EmptyState, Modal, PriorityBadge, ProgressBar, Skeleton, StatusBadge, cx } from '@/components/ui';
 
 type View = 'tabla' | 'tarjetas';
@@ -55,12 +56,20 @@ export default function ShoppingList() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => writePref('msp.sort', sort), [sort]);
   useEffect(() => writePref('msp.view', view), [view]);
   useEffect(() => writePref('msp.cols', cols), [cols]);
 
-  const filtered = useMemo(() => sortRows(applyFilters(data.rows, filters), sort), [data.rows, filters, sort]);
+  // la búsqueda se calcula en segundo plano para no bloquear la escritura
+  const deferredFilters = useDeferredValue(filters);
+  const filtered = useMemo(() => sortRows(applyFilters(data.rows, deferredFilters), sort), [data.rows, deferredFilters, sort]);
+  // con listas grandes se muestran por bloques para que la pantalla siga siendo ágil
+  const PAGE = 100;
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [deferredFilters, sort]);
+  const visibleRows = filtered.slice(0, shown);
   const totals = totalsOf(filtered);
   const selRows = filtered.filter((r) => selected.has(r.item.id));
   // limpia selección de artículos que ya no son visibles
@@ -182,7 +191,10 @@ export default function ShoppingList() {
       {!hasAny ? (
         <EmptyState icon={<ListChecks className="size-6" />} title="Tu lista está vacía"
           text="Agrega productos nuevos o elige artículos de tu catálogo para planificar el surtido inicial."
-          action={<Button icon={<Plus className="size-4" />} onClick={() => open({})}>Agregar producto</Button>} />
+          action={<div className="flex flex-wrap justify-center gap-2">
+            <Button icon={<Plus className="size-4" />} onClick={() => open({})}>Agregar producto</Button>
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>Importar desde archivo</Button>
+          </div>} />
       ) : filtered.length === 0 ? (
         <EmptyState icon={<Search className="size-6" />} title="Sin coincidencias"
           text={filters.statuses.length === 2 && data.rows.every((r) => r.status === 'completado') ? '¡Todo está comprado! Consulta la sección Comprados.' : 'No hay productos que coincidan con la búsqueda y los filtros seleccionados.'}
@@ -197,11 +209,18 @@ export default function ShoppingList() {
             </label>
           </div>
           {view === 'tabla'
-            ? <TableView rows={filtered} selected={selected} toggle={toggle} cols={cols} actions={rowActions} />
-            : <CardsView rows={filtered} selected={selected} toggle={toggle} actions={rowActions} />}
+            ? <TableView rows={visibleRows} selected={selected} toggle={toggle} cols={cols} actions={rowActions} />
+            : <CardsView rows={visibleRows} selected={selected} toggle={toggle} actions={rowActions} />}
+          {filtered.length > shown && (
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <Button variant="secondary" onClick={() => setShown((n) => n + PAGE)}>Mostrar {Math.min(PAGE, filtered.length - shown)} más</Button>
+              <p className="text-xs text-muted">Mostrando {shown} de {filtered.length}. Usa el buscador o los filtros para encontrar más rápido.</p>
+            </div>
+          )}
         </>
       )}
 
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
       <FilterSheet open={sheet} onClose={() => setSheet(false)} filters={filters} setFilters={setFilters} sort={sort} setSort={setSort} count={filtered.length} />
       {moveOpen && <MoveDialog productIds={selRows.map((r) => r.product.id)} onClose={() => setMoveOpen(false)} onDone={() => setSelected(new Set())} />}
     </div>
@@ -431,7 +450,7 @@ function TableView({ rows, selected, toggle, cols, actions }: { rows: PlanRow[];
                 <p className="truncate text-xs text-muted">{[r.product.brand, r.product.presentation].filter(Boolean).join(' · ') || '—'}</p>
                 {r.status === 'parcial' && <ProgressBar value={r.progress} className="mt-1 h-1 w-24" />}
               </td>
-              {cols.clasificacion && <td className="td text-sm"><p>{r.department?.name ?? '—'}</p><p className="text-xs text-muted">{r.category?.name ?? 'Sin categoría'}</p></td>}
+              {cols.clasificacion && <td className="td max-w-[180px] text-sm"><p className="truncate" title={r.department?.name}>{r.department?.name ?? '—'}</p><p className="truncate text-xs text-muted" title={r.category?.name}>{r.category?.name ?? 'Sin categoría'}</p></td>}
               <td className="td"><PrioritySelect row={r} /></td>
               <td className="td text-right"><QtyInput row={r} /></td>
               <td className="td num text-right">{r.bought}</td>
@@ -443,7 +462,10 @@ function TableView({ rows, selected, toggle, cols, actions }: { rows: PlanRow[];
               {cols.proveedor && <td className="td max-w-[140px] truncate text-muted">{r.product.supplier ?? '—'}</td>}
               <td className="td">
                 <div className="flex items-center justify-end gap-1">
-                  {r.pending > 0 && <Button size="sm" variant="secondary" onClick={() => purchases.register(r.item.id)}>Comprar</Button>}
+                  {r.pending > 0 && (
+                    <Button size="sm" variant="secondary" aria-label="Comprar" title="Registrar compra" className="px-2" icon={<ShoppingBag className="size-4" />}
+                      onClick={() => purchases.register(r.item.id)} />
+                  )}
                   <Menu items={actions(r)} />
                 </div>
               </td>

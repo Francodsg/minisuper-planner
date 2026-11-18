@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, FileJson, FileSpreadsheet, FolderTree, LogOut, Save, Upload, User } from 'lucide-react';
+import { Download, FileJson, FileSpreadsheet, FileUp, FolderTree, LogOut, Save, Upload, User } from 'lucide-react';
+import { ImportDialog } from '@/components/ImportDialog';
 import { useData } from '@/data/DataContext';
 import { useAuth } from '@/data/AuthContext';
 import * as api from '@/data/api';
@@ -36,6 +37,7 @@ export default function Settings() {
   const [reminder, setReminder] = useState('7');
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -129,6 +131,7 @@ export default function Settings() {
             <Button variant="secondary" className="h-11" icon={<FileJson className="size-4" />} onClick={exportJson}>Respaldo JSON</Button>
             <Button variant="secondary" className="h-11" icon={<FileSpreadsheet className="size-4" />} onClick={exportCsv}>Lista a CSV</Button>
             <Button variant="secondary" className="h-11" loading={importing} icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>Restaurar</Button>
+            <Button variant="secondary" className="h-11 sm:col-span-3" icon={<FileUp className="size-4" />} onClick={() => setImportOpen(true)}>Importar productos desde CSV (sin borrar nada)</Button>
             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); }} />
           </div>
           <Field label="Recordarme generar un respaldo cada" htmlFor="rem" className="mt-4" hint="Se muestra un aviso en Inicio cuando toca respaldar. 0 = sin recordatorio.">
@@ -152,6 +155,7 @@ export default function Settings() {
           <Button variant="secondary" className="mt-4 text-danger" icon={<LogOut className="size-4" />} onClick={() => void signOut()}>Cerrar sesión</Button>
         </Card>
       </div>
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

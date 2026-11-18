@@ -46,6 +46,6 @@
     @apply inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-white px-3 text-sm text-ink transition
       hover:border-slate-300 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary-dark;
   }
-  .th { @apply px-3 py-2.5 text-left text-xs font-semibold tracking-wide text-muted uppercase whitespace-nowrap; }
-  .td { @apply px-3 py-2.5 align-middle text-sm; }
+  .th { @apply px-2.5 py-2.5 text-left text-xs font-semibold tracking-wide text-muted uppercase whitespace-nowrap; }
+  .td { @apply px-2.5 py-2.5 align-middle text-sm; }
 }

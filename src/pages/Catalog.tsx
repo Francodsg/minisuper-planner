@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, BookOpen, FolderInput, ListPlus, Pencil, Plus, Search, X } from 'lucide-react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Archive, ArchiveRestore, BookOpen, FileUp, FolderInput, ListPlus, Pencil, Plus, Search, X } from 'lucide-react';
 import { useData } from '@/data/DataContext';
 import * as api from '@/data/api';
 import { friendlyError } from '@/data/supabase';
@@ -16,6 +16,7 @@ import { Menu } from '@/components/Menu';
 import { MultiSelect } from '@/components/MultiSelect';
 import { Button, EmptyState, Skeleton, cx } from '@/components/ui';
 import { MoveDialog } from './ShoppingList';
+import { ImportDialog } from '@/components/ImportDialog';
 
 export default function Catalog() {
   const data = useData();
@@ -28,21 +29,25 @@ export default function Catalog() {
   const [inList, setInList] = useState<'todos' | 'si' | 'no'>('todos');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveOpen, setMoveOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const dMap = useMemo(() => new Map(data.departments.map((d) => [d.id, d.name])), [data.departments]);
   const cMap = useMemo(() => new Map(data.categories.map((c) => [c.id, c.name])), [data.categories]);
   const rowByProduct = useMemo(() => new Map(data.rows.map((r) => [r.product.id, r])), [data.rows]);
 
+  const dq = useDeferredValue(q);
+  const [shown, setShown] = useState(100);
+  useEffect(() => setShown(100), [dq, deps, showArchived, inList]);
   const list = useMemo(() => {
     return data.products
       .filter((p) => p.archived === showArchived)
       .filter((p) => deps.length === 0 || deps.includes(p.department_id ?? ''))
       .filter((p) => inList === 'todos' || (inList === 'si') === rowByProduct.has(p.id))
-      .filter((p) => matchesQuery(q, [p.name, p.brand, p.presentation, p.supplier, dMap.get(p.department_id ?? ''), cMap.get(p.category_id ?? '')]))
-      .sort((a, b) => q
-        ? relevance(q, b.name, []) - relevance(q, a.name, []) || normalize(a.name).localeCompare(normalize(b.name), 'es')
+      .filter((p) => matchesQuery(dq, [p.name, p.brand, p.presentation, p.supplier, dMap.get(p.department_id ?? ''), cMap.get(p.category_id ?? '')]))
+      .sort((a, b) => dq
+        ? relevance(dq, b.name, []) - relevance(dq, a.name, []) || normalize(a.name).localeCompare(normalize(b.name), 'es')
         : normalize(a.name).localeCompare(normalize(b.name), 'es'));
-  }, [data.products, showArchived, deps, inList, q, rowByProduct, dMap, cMap]);
+  }, [data.products, showArchived, deps, inList, dq, rowByProduct, dMap, cMap]);
 
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const sel = list.filter((p) => selected.has(p.id));
@@ -73,7 +78,10 @@ export default function Catalog() {
   return (
     <div>
       <PageHeader title="Catálogo" description="Tus productos reutilizables. Comienza vacío: agrega tus propios artículos."
-        actions={<Button className="max-md:!hidden" icon={<Plus className="size-4" />} onClick={() => open({ kind: 'new', addToList: false })}>Nuevo producto</Button>} />
+        actions={<>
+          <Button variant="secondary" icon={<FileUp className="size-4" />} onClick={() => setImportOpen(true)}>Importar</Button>
+          <Button className="max-md:!hidden" icon={<Plus className="size-4" />} onClick={() => open({ kind: 'new', addToList: false })}>Nuevo producto</Button>
+        </>} />
 
       <div className="card mb-4 flex flex-col gap-2 p-3 md:flex-row md:items-center">
         <div className="relative flex-1">
@@ -105,7 +113,10 @@ export default function Catalog() {
       {data.products.length === 0 ? (
         <EmptyState icon={<BookOpen className="size-6" />} title="Tu catálogo está vacío"
           text="No hay productos precargados. Agrega tus artículos y luego inclúyelos en la lista de compras."
-          action={<Button icon={<Plus className="size-4" />} onClick={() => open({ kind: 'new', addToList: false })}>Crear primer producto</Button>} />
+          action={<div className="flex flex-wrap justify-center gap-2">
+            <Button icon={<Plus className="size-4" />} onClick={() => open({ kind: 'new', addToList: false })}>Crear primer producto</Button>
+            <Button variant="secondary" icon={<FileUp className="size-4" />} onClick={() => setImportOpen(true)}>Importar desde archivo</Button>
+          </div>} />
       ) : list.length === 0 ? (
         <EmptyState icon={<Search className="size-6" />} title="Sin coincidencias" text={`No se encontraron productos${q ? ` para “${q}”` : ''}.`} />
       ) : (
@@ -115,7 +126,7 @@ export default function Catalog() {
               onChange={(e) => setSelected(e.target.checked ? new Set(list.map((p) => p.id)) : new Set())} />
             Seleccionar todos ({list.length})
           </label>
-          {list.map((p) => {
+          {list.slice(0, shown).map((p) => {
             const row = rowByProduct.get(p.id);
             const cost = finalUnitCost(p);
             return (
@@ -152,8 +163,15 @@ export default function Catalog() {
               </div>
             );
           })}
+          {list.length > shown && (
+            <div className="flex flex-col items-center gap-1 px-4 py-4">
+              <Button variant="secondary" onClick={() => setShown((n) => n + 100)}>Mostrar {Math.min(100, list.length - shown)} más</Button>
+              <p className="text-xs text-muted">Mostrando {shown} de {list.length}</p>
+            </div>
+          )}
         </div>
       )}
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
       {moveOpen && <MoveDialog productIds={sel.map((p) => p.id)} onClose={() => setMoveOpen(false)} onDone={() => setSelected(new Set())} />}
     </div>
   );

@@ -26,6 +26,14 @@ Aplicación web para planificar y controlar el **surtido inicial de un minisúpe
 
 Al registrarse, cada usuario recibe automáticamente: su configuración, una lista “Surtido inicial” y los 9 departamentos comunes. **No se precargan categorías ni productos.**
 
+## Importar productos en lote
+
+*Catálogo → Importar* (o *Configuración → Importar productos desde CSV*) agrega muchos productos de una vez al catálogo y a la lista, sin borrar nada.
+
+- Formato: CSV UTF-8 (en Excel: *Guardar como → CSV UTF-8*). Columnas obligatorias: **Producto** y **Cantidad** (entero > 0). Opcionales: Prioridad (Alta/Media/Baja, o Apertura/Después/Mucho después), Departamento, Categoría, Marca, Presentación, Costo unitario, Proveedor, Notas.
+- Crea los departamentos y categorías que no existan.
+- Es repetible: si se interrumpe, vuelve a importar el mismo archivo; lo ya creado se reutiliza y lo que ya está en la lista se omite.
+
 ## Publicar en GitHub Pages
 
 El flujo `.github/workflows/deploy.yml` compila y publica la app en cada *push* a `main`, en `https://<usuario>.github.io/<repo>/`.
